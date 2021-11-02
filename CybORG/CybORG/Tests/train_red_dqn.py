@@ -24,7 +24,7 @@ path = path[:-10] + "/Shared/Scenarios/Scenario1b.yaml"
 # action_space = env.action_space
 
 DQN_HYPERPARAMS = {
-    "c51": False,
+    "c51": True,
     "dueling": True,
     "noisy_net": False,
     "double_DQN": True,
@@ -36,7 +36,7 @@ DQN_HYPERPARAMS = {
     "epsilon_final": 0.05,
     "optimizer_type": "Adam",
     "learning_rate": 1e-4,
-    "gamma": 0.95,
+    "gamma": 0.9,
     "n_iter_update_target": 200,
     "batch_size": 256,
     "net_arch": [512, 512],
@@ -52,7 +52,7 @@ DEVICE = torch.device(get_device("auto"))
 writer = None
 TEST_PER_N_ITER = int(2000)
 TRAIN_FREQ = 1
-TEST_N_EPISODE = 5
+TEST_N_EPISODE = 1
 BATCH_SIZE = int(DQN_HYPERPARAMS["batch_size"])
 seed = 0
 LOG_DIR = "./content/runs/C51+D3QN"
@@ -96,6 +96,7 @@ if __name__ == "__main__":
     # env = gym.make("nasim:Small-v0")
     # env_test = gym.make("nasim:Small-v0")
 
+    r = []
     print("Ovservation Shape:{}".format(np.shape(env.observation_space)))
 
     if SUMMARY_WRITER:
@@ -115,6 +116,7 @@ if __name__ == "__main__":
 
     for n_iter in range(MAX_N_Iter):
         # print("---trainning at {}---".format(agent.n_iter))
+
         obs = env.reset()
         done = False
 
@@ -127,8 +129,11 @@ if __name__ == "__main__":
             # action, _state = agent.predict(obs)
             # print(action)
             new_obs, reward, done, _ = env.step(action)
+
             agent.add_env_feedback(obs, action, new_obs, reward, done)
             obs = new_obs
+
+            r.append(reward)
 
             if agent.n_iter % TRAIN_FREQ == 0:
                 agent.train(BATCH_SIZE)
@@ -155,9 +160,13 @@ if __name__ == "__main__":
                         "test_total_reward_iter_std", test_mean_reward_std, agent.n_iter
                     )
                     writer.add_scalars(
-                        "rewards", {"test_total_reward": test_mean_reward}, agent.n_iter
+                        "rewards", {
+                            "test_total_reward": test_mean_reward}, agent.n_iter
                     )
         if x_loop_must_break == True:
             break
 
         agent.reset_stats()
+
+    plt.plot(r)
+    plt.show()

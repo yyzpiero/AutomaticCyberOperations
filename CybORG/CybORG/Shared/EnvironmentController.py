@@ -28,6 +28,7 @@ class EnvironmentController:
     agent_interfaces : dict[str: AgentInterface]
         agent interface object for agents in scenario
     """
+
     def __init__(self,
                  scenario_path: str,
                  scenario_mod: dict = None,
@@ -49,7 +50,8 @@ class EnvironmentController:
         self.scenario = Scenario(scenario_dict)
         self._create_environment()
         self.agent_interfaces = self._create_agents(agents)
-        self.red_goal = {}
+        self.red_goal = {"num_impact": 1, "percent_impact": 0.8,
+                         "num_privesc": 5, "percent_privesc": 0.7, "max_step": 1500}
         self.reward = {}
         self.INFO_DICT = {}
         self.action = {}
@@ -95,6 +97,7 @@ class EnvironmentController:
         self.reward = {}
         self.steps = 0
         self.done = False
+        self.ots = None
         self.init_state = self._filter_obs(
             self.get_true_state(self.INFO_DICT["True"])).data
         for agent_name, agent_object in self.agent_interfaces.items():
@@ -165,9 +168,10 @@ class EnvironmentController:
         for agent_name, agent_object in self.agent_interfaces.items():
 
             # determine done signal for agent
-            done = self.determine_done(next_observation, true_observation,
-                                       agent_name)
+            done = self.determine_done(
+                next_observation, true_observation, agent_name)
             self.done = done or self.done
+
             # determine reward for agent
             reward = agent_object.determine_reward(next_observation,
                                                    true_observation,
@@ -214,6 +218,7 @@ class EnvironmentController:
                 get_action_space(),
                 action=self.action[agent],
             )
+        self.steps += 1
         return result
 
     def execute_action(self, action: Action) -> Observation:
@@ -239,23 +244,25 @@ class EnvironmentController:
             whether goal was reached or not
         """
         action = self.action[agent_name]
-        total_sessions = len(true_obs - 1)
+        total_sessions = len(true_obs) - 1
         if agent_name == "Red":
             disrupted = []
-            ots = []
 
-            for host_info in true_obs.values():
-                if type(host_info) is not dict:
-                    continue
-                if "Processes" in host_info:
-                    for proc in host_info["Processes"]:
-                        if proc["Process Name"] == "OTService":
-                            ots.append(host_info["System info"]["Hostname"])
+            if self.ots == None:
+                self.ots = []
+                for host_info in true_obs.values():
+                    if type(host_info) is not dict:
+                        continue
+                    if "Processes" in host_info:
+                        for proc in host_info["Processes"]:
+                            if proc["Process Name"] == "OTService":
+                                self.ots.append(
+                                    host_info["System info"]["Hostname"])
             for host_info in true_obs.values():
                 working = False
                 if type(host_info) is not dict:
                     continue
-                if host_info["System info"]["Hostname"] in ots:
+                if host_info["System info"]["Hostname"] in self.ots:
                     if "Processes" in host_info:
                         for proc in host_info["Processes"]:
                             if proc["Process Name"] == "OTService":
@@ -274,28 +281,28 @@ class EnvironmentController:
                     for session in info["Sessions"]:
                         if session["Agent"] == "Red":
                             # count the number of root sessions
-                            if (session["Username"] == "root"
-                                    and info["System info"]["OSType"]
-                                    == OperatingSystemType.LINUX):
+                            if (session["Username"] == "root" and info["System info"]["OSType"] == OperatingSystemType.LINUX):
                                 privesc_root_sessions += 1
                                 break
                             # count the number of SYSTEM sessions
-                            if (session["Username"] == "SYSTEM"
-                                    and info["System info"]["OSType"]
-                                    == OperatingSystemType.WINDOWS):
+                            if (session["Username"] == "SYSTEM" and info["System info"]["OSType"] == OperatingSystemType.WINDOWS):
                                 privesc_system_sessions += 1
                                 break
             privesc_sessions = privesc_root_sessions + privesc_system_sessions
-            if len(disrupted) / len(ots) >= 0.8 and len(
-                    disrupted
-            ) > 1:  # % of total and at least n hosts have been impacted
+            # % of total and at least n hosts have been impacted
+            if len(disrupted) / len(self.ots) >= self.red_goal["percent_impact"] and len(disrupted) >= self.red_goal["num_impact"]:
+                print("Taget 1 finished at {}".format(self.steps))
                 return True
-            if privesc_sessions / total_sessions >= 0.8 and privesc_sessions > 1:
+            if privesc_sessions / total_sessions >= self.red_goal["percent_privesc"] and privesc_sessions > self.red_goal["num_privesc"]:
+                print("Taget 2 finished at {}".format(self.steps))
+                return True
+            if self.steps >= self.red_goal["max_step"]:
+                print("Exceed Max Steps at {}".format(self.steps))
                 return True
         else:
             return False
 
-        return False
+        # return False
 
     def start(self, steps: int = None, log_file=None):
         """Start the environment and run for a specified number of steps.

@@ -98,7 +98,8 @@ class DistruptRewardCalculator(RewardCalculator):
                 if "Processes" in host_info:
                     for proc in host_info["Processes"]:
                         if proc["Process Name"] == "OTService":
-                            self.ots.append(host_info["System info"]["Hostname"])
+                            self.ots.append(
+                                host_info["System info"]["Hostname"])
         for host_info in current_state.values():
             working = False
             if type(host_info) is not dict:
@@ -115,7 +116,8 @@ class DistruptRewardCalculator(RewardCalculator):
         #         disrupted.append(agent_action.hostname)
         reward = sum(
             [
-                self.mapping[self.scenario.get_host(i).get("AvailabilityValue", "Low")]
+                self.mapping[self.scenario.get_host(
+                    i).get("AvailabilityValue", "Low")]
                 for i in disrupted
             ]
         )
@@ -130,7 +132,8 @@ class HybridImpactPwnRewardCalculator(RewardCalculator):
     def __init__(self, agent_name: str, scenario: Scenario):
         super(HybridImpactPwnRewardCalculator, self).__init__(agent_name)
         self.pwn_calculator = PwnRewardCalculator(agent_name, scenario)
-        self.disrupt_calculator = DistruptRewardCalculator(agent_name, scenario)
+        self.disrupt_calculator = DistruptRewardCalculator(
+            agent_name, scenario)
 
     def reset(self):
         self.pwn_calculator.reset()
