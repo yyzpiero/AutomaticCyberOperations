@@ -28,8 +28,10 @@ class EnvironmentController:
     agent_interfaces : dict[str: AgentInterface]
         agent interface object for agents in scenario
     """
-
-    def __init__(self, scenario_path: str, scenario_mod: dict = None, agents: dict = None):
+    def __init__(self,
+                 scenario_path: str,
+                 scenario_mod: dict = None,
+                 agents: dict = None):
         """Instantiates the Environment Controller.
         Parameters
         ----------
@@ -47,24 +49,34 @@ class EnvironmentController:
         self.scenario = Scenario(scenario_dict)
         self._create_environment()
         self.agent_interfaces = self._create_agents(agents)
+        self.red_goal = {}
         self.reward = {}
         self.INFO_DICT = {}
         self.action = {}
         self.done = False
         self.observation = {}
-        self.INFO_DICT['True'] = {}
+        self.INFO_DICT["True"] = {}
         for host in self.scenario.hosts:
-            self.INFO_DICT['True'][host] = {'System info': 'All', 'Sessions': 'All', 'Interfaces': 'All', 'User info': 'All',
-                                      'Processes': ['All']}
-        self.init_state = self._filter_obs(self.get_true_state(self.INFO_DICT['True'])).data
+            self.INFO_DICT["True"][host] = {
+                "System info": "All",
+                "Sessions": "All",
+                "Interfaces": "All",
+                "User info": "All",
+                "Processes": ["All"],
+            }
+        self.init_state = self._filter_obs(
+            self.get_true_state(self.INFO_DICT["True"])).data
         for agent in self.scenario.agents:
-            self.INFO_DICT[agent] = self.scenario.get_agent_info(agent).osint.get('Hosts', {})
+            self.INFO_DICT[agent] = self.scenario.get_agent_info(
+                agent).osint.get("Hosts", {})
             for host in self.INFO_DICT[agent].keys():
-                self.INFO_DICT[agent][host]['Sessions'] = agent
+                self.INFO_DICT[agent][host]["Sessions"] = agent
         # populate initial observations with OSINT
         for agent_name, agent in self.agent_interfaces.items():
-            self.observation[agent_name] = self._filter_obs(self.get_true_state(self.INFO_DICT[agent_name]), agent_name)
-            agent.set_init_obs(self.observation[agent_name].data, self.init_state)
+            self.observation[agent_name] = self._filter_obs(
+                self.get_true_state(self.INFO_DICT[agent_name]), agent_name)
+            agent.set_init_obs(self.observation[agent_name].data,
+                               self.init_state)
 
     def reset(self, agent: str = None) -> Results:
         """Resets the environment and get initial agent observation and actions.
@@ -83,18 +95,29 @@ class EnvironmentController:
         self.reward = {}
         self.steps = 0
         self.done = False
-        self.init_state = self._filter_obs(self.get_true_state(self.INFO_DICT['True'])).data
+        self.init_state = self._filter_obs(
+            self.get_true_state(self.INFO_DICT["True"])).data
         for agent_name, agent_object in self.agent_interfaces.items():
             agent_object.reset()
-            self.observation[agent_name] = self._filter_obs(self.get_true_state(self.INFO_DICT[agent_name]), agent_name)
-            agent_object.set_init_obs(self.observation[agent_name].data, self.init_state)
+            self.observation[agent_name] = self._filter_obs(
+                self.get_true_state(self.INFO_DICT[agent_name]), agent_name)
+            agent_object.set_init_obs(self.observation[agent_name].data,
+                                      self.init_state)
         if agent is None:
             return Results(observation=self.init_state)
         else:
-            return Results(observation=self.observation[agent].data,
-                           action_space=self.agent_interfaces[agent].action_space.get_action_space())
+            return Results(
+                observation=self.observation[agent].data,
+                action_space=self.agent_interfaces[agent].action_space.
+                get_action_space(),
+            )
 
-    def step(self, agent: str = None, action: Action = None, skip_valid_action_check: bool = False) -> Results:
+    def step(
+        self,
+        agent: str = None,
+        action: Action = None,
+        skip_valid_action_check: bool = False,
+    ) -> Results:
         """Perform a step in the environment for given agent.
 
         Parameters
@@ -117,19 +140,23 @@ class EnvironmentController:
             # pass observation to agent to get action
 
             if agent is None or action is None or agent != agent_name:
-                agent_action = agent_object.get_action(self.observation[agent_name])
+                agent_action = agent_object.get_action(
+                    self.observation[agent_name])
 
             else:
                 agent_action = action
-            if not self.test_valid_action(agent_action, agent_object) and not skip_valid_action_check:
+            if (not self.test_valid_action(agent_action, agent_object)
+                    and not skip_valid_action_check):
                 agent_action = InvalidAction()
             self.action[agent_name] = agent_action
 
             # perform action on state
-            next_observation[agent_name] = self._filter_obs(self.execute_action(self.action[agent_name]), agent_name)
+            next_observation[agent_name] = self._filter_obs(
+                self.execute_action(self.action[agent_name]), agent_name)
 
         # get true observation
-        true_observation = self._filter_obs(self.get_true_state(self.INFO_DICT['True'])).data
+        true_observation = self._filter_obs(
+            self.get_true_state(self.INFO_DICT["True"])).data
 
         # Blue update step.
         # New idea: run the MONITOR action for the Blue agent, and update the observation.
@@ -138,16 +165,23 @@ class EnvironmentController:
         for agent_name, agent_object in self.agent_interfaces.items():
 
             # determine done signal for agent
-            done = self.determine_done(next_observation, true_observation, self.action[agent_name])
+            done = self.determine_done(next_observation, true_observation,
+                                       agent_name)
             self.done = done or self.done
             # determine reward for agent
-            reward = agent_object.determine_reward(next_observation, true_observation,
+            reward = agent_object.determine_reward(next_observation,
+                                                   true_observation,
                                                    self.action, self.done)
             self.reward[agent_name] = reward + self.action[agent_name].cost
             if agent_name != agent:
                 # train agent using obs, reward, previous observation, and done
-                agent_object.train(Results(observation=self.observation[agent_name].data, reward=reward,
-                                           next_observation=next_observation[agent_name].data, done=self.done))
+                agent_object.train(
+                    Results(
+                        observation=self.observation[agent_name].data,
+                        reward=reward,
+                        next_observation=next_observation[agent_name].data,
+                        done=self.done,
+                    ))
             self.observation[agent_name] = next_observation[agent_name]
             agent_object.update(self.observation[agent_name])
 
@@ -157,10 +191,14 @@ class EnvironmentController:
 
         # Update Blue's observation with the latest information before returning.
         for agent_name, agent_object in self.agent_interfaces.items():
-            if agent_name == 'Blue':
-                agent_session = list(self.get_action_space(agent_name)['session'].keys())[0]
+            if agent_name == "Blue":
+                agent_session = list(
+                    self.get_action_space(agent_name)["session"].keys())[0]
                 agent_observation = self._filter_obs(
-                    self.execute_action(Monitor(session=agent_session, agent='Blue')), agent_name)
+                    self.execute_action(
+                        Monitor(session=agent_session, agent="Blue")),
+                    agent_name,
+                )
                 self.observation[agent_name].combine_obs(agent_observation)
                 agent_object.update(self.observation[agent_name])
         # if done then complete other agent's turn
@@ -168,19 +206,22 @@ class EnvironmentController:
         if agent is None:
             result = Results(observation=true_observation, done=self.done)
         else:
-            result = Results(observation=self.observation[agent].data, done=self.done, reward=round(self.reward[agent], 1),
-                             action_space=self.agent_interfaces[agent].action_space.get_action_space(),
-                             action=self.action[agent])
+            result = Results(
+                observation=self.observation[agent].data,
+                done=self.done,
+                reward=round(self.reward[agent], 1),
+                action_space=self.agent_interfaces[agent].action_space.
+                get_action_space(),
+                action=self.action[agent],
+            )
         return result
 
     def execute_action(self, action: Action) -> Observation:
         """Execute an action in the environment"""
         raise NotImplementedError
 
-    def determine_done(self,
-                       agent_obs: dict,
-                       true_obs: dict,
-                       action: Action) -> bool:
+    def determine_done(self, agent_obs: dict, true_obs: dict,
+                       agent_name: str) -> bool:
         """Determine if environment scenario goal has been reached.
 
         Parameters
@@ -197,6 +238,63 @@ class EnvironmentController:
         bool
             whether goal was reached or not
         """
+        action = self.action[agent_name]
+        total_sessions = len(true_obs - 1)
+        if agent_name == "Red":
+            disrupted = []
+            ots = []
+
+            for host_info in true_obs.values():
+                if type(host_info) is not dict:
+                    continue
+                if "Processes" in host_info:
+                    for proc in host_info["Processes"]:
+                        if proc["Process Name"] == "OTService":
+                            ots.append(host_info["System info"]["Hostname"])
+            for host_info in true_obs.values():
+                working = False
+                if type(host_info) is not dict:
+                    continue
+                if host_info["System info"]["Hostname"] in ots:
+                    if "Processes" in host_info:
+                        for proc in host_info["Processes"]:
+                            if proc["Process Name"] == "OTService":
+                                working = True
+                        if not working:
+                            disrupted.append(
+                                host_info["System info"]["Hostname"])
+
+            privesc_root_sessions = 0
+            privesc_system_sessions = 0
+            for host, info in true_obs.items():
+                if host == "success":
+                    continue
+
+                if "Sessions" in info:
+                    for session in info["Sessions"]:
+                        if session["Agent"] == "Red":
+                            # count the number of root sessions
+                            if (session["Username"] == "root"
+                                    and info["System info"]["OSType"]
+                                    == OperatingSystemType.LINUX):
+                                privesc_root_sessions += 1
+                                break
+                            # count the number of SYSTEM sessions
+                            if (session["Username"] == "SYSTEM"
+                                    and info["System info"]["OSType"]
+                                    == OperatingSystemType.WINDOWS):
+                                privesc_system_sessions += 1
+                                break
+            privesc_sessions = privesc_root_sessions + privesc_system_sessions
+            if len(disrupted) / len(ots) >= 0.8 and len(
+                    disrupted
+            ) > 1:  # % of total and at least n hosts have been impacted
+                return True
+            if privesc_sessions / total_sessions >= 0.8 and privesc_sessions > 1:
+                return True
+        else:
+            return False
+
         return False
 
     def start(self, steps: int = None, log_file=None):
@@ -220,7 +318,7 @@ class EnvironmentController:
             while not done:
                 max_steps += 1
                 _, _, done = self.step()
-            print('Red Wins!')  # Junk Test Code
+            print("Red Wins!")  # Junk Test Code
         else:
             for step in range(steps):
                 max_steps += 1
@@ -229,7 +327,7 @@ class EnvironmentController:
                 if step == 500:
                     print(step)  # Junk Test Code
                 if done:
-                    print(f'Red Wins at step {step}')  # Junk Test Code
+                    print(f"Red Wins at step {step}")  # Junk Test Code
                     break
         for agent_name, agent in self.agent_interfaces.items():
             agent.end_episode()
@@ -238,8 +336,7 @@ class EnvironmentController:
             log_file.write(
                 f"{max_steps},{self.reward['Red']},{self.reward['Blue']},"
                 f"{self.agent_interfaces['Red'].agent.epsilon},"
-                f"{self.agent_interfaces['Red'].agent.gamma}\n"
-            )
+                f"{self.agent_interfaces['Red'].agent.gamma}\n")
         return done
 
     def get_true_state(self, info: dict) -> Observation:
@@ -278,7 +375,9 @@ class EnvironmentController:
         """
         if agent in self.agent_interfaces:
             return self.agent_interfaces[agent].action_space.get_action_space()
-        raise ValueError(f'Agent {agent} not in agent list {self.agent_interfaces.values()}')
+        raise ValueError(
+            f"Agent {agent} not in agent list {self.agent_interfaces.values()}"
+        )
 
     def get_observation_space(self, agent: str) -> dict:
         """
@@ -288,7 +387,9 @@ class EnvironmentController:
                 """
         if agent in self.agent_interfaces:
             return self.agent_interfaces[agent].get_observation_space()
-        raise ValueError(f'Agent {agent} not in agent list {self.agent_interfaces.values()}')
+        raise ValueError(
+            f"Agent {agent} not in agent list {self.agent_interfaces.values()}"
+        )
 
     def get_last_action(self, agent: str) -> Action:
         """
@@ -297,8 +398,6 @@ class EnvironmentController:
                     agent selected
                 """
         return self.action[agent] if agent in self.action else None
-
-
 
     def restore(self, filepath: str):
         """Restores the environment from file
@@ -342,7 +441,9 @@ class EnvironmentController:
         """
         raise NotImplementedError
 
-    def _parse_scenario(self, scenario_file_path: str, scenario_mod: dict = None):
+    def _parse_scenario(self,
+                        scenario_file_path: str,
+                        scenario_mod: dict = None):
         with open(scenario_file_path) as fIn:
             scenario_dict = yaml.load(fIn, Loader=yaml.FullLoader)
         return scenario_dict
@@ -355,7 +456,7 @@ class EnvironmentController:
             if agent_classes is not None and agent_name in agent_classes:
                 agent_class = agent_classes[agent_name]
             else:
-                agent_class = getattr(sys.modules['CybORG.Agents'],
+                agent_class = getattr(sys.modules["CybORG.Agents"],
                                       agent_info.agent_type)
             agents[agent_name] = AgentInterface(
                 agent_class,
@@ -364,7 +465,7 @@ class EnvironmentController:
                 agent_info.reward_calculator_type,
                 allowed_subnets=agent_info.allowed_subnets,
                 wrappers=agent_info.wrappers,
-                scenario=self.scenario
+                scenario=self.scenario,
             )
         return agents
 
@@ -374,30 +475,30 @@ class EnvironmentController:
     def _filter_obs(self, obs: Observation, agent_name=None):
         """Filter obs to contain only hosts/subnets in scenario network """
         if agent_name is not None:
-            subnets = [self.subnet_cidr_map[s] for s in self.scenario.get_agent_info(agent_name).allowed_subnets]
+            subnets = [
+                self.subnet_cidr_map[s] for s in self.scenario.get_agent_info(
+                    agent_name).allowed_subnets
+            ]
         else:
             subnets = list(self.subnet_cidr_map.values())
 
-        obs.filter_addresses(
-            ips=self.hostname_ip_map.values(),
-            cidrs=subnets,
-            include_localhost=False
-        )
+        obs.filter_addresses(ips=self.hostname_ip_map.values(),
+                             cidrs=subnets,
+                             include_localhost=False)
         return obs
 
     def test_valid_action(self, action: Action, agent: AgentInterface):
         # returns true if the parameters in the action are in and true in the action set else return false
         action_space = agent.action_space.get_action_space()
         # first check that the action class is allowed
-        if type(action) not in action_space['action'] or not action_space['action'][type(action)]:
+        if (type(action) not in action_space["action"]
+                or not action_space["action"][type(action)]):
             return False
         # next for each parameter in the action
         for parameter_name, parameter_value in action.get_params().items():
             if parameter_name not in action_space:
                 continue
-            if parameter_value not in action_space[parameter_name] or not action_space[parameter_name][parameter_value]:
+            if (parameter_value not in action_space[parameter_name]
+                    or not action_space[parameter_name][parameter_value]):
                 return False
         return True
-
-
-
